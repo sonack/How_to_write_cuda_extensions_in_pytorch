@@ -9,7 +9,7 @@ However, [the offical docs about how to create a C extension](http://pytorch.org
 
 ## Basic Steps
 
-For simplicity, I will create a new `Differential Round Function` below, which is a elment-wise operation on any dimensional tensor whose any element's range is (0,1) (just think as after a sigmoid activation), and the forward calcuation formula is just like the ordinal round function (f(x) = 1, when 1 \> x \>=0.5 else f(x) = 0, when 0 \< x \< 0.5), however, it is not differential causing the BP algorithm can't work normally, so in the backward phase its gradient will be replaced with the gradient of the corresponding approximating function f(x) = x, x∈(0,1), i.e. gradient is 1 w.r.t the round function itself, so the gradient of input is just the same as the gradient of output. I will use a similarly caffe's `CAFFE_KERNEL_LOOP` macro in pytorch's cuda file which iterate over each element position of the tensor.
+For simplicity, I will create a new `Differential Round Function` below, which is a elment-wise operation on any dimensional tensor whose any element's range is (0,1) (just think as after a sigmoid activation), and the forward calcuation formula is just like the ordinal round function (f(x) = 1, when 1 \> x \>=0.5 else f(x) = 0, when 0 \< x \< 0.5), however, it is not differential causing the BP algorithm can't work normally, so in the backward phase its gradient will be replaced with the gradient of the corresponding approximating function f(x) = x, x∈(0,1), i.e. gradient is 1 w.r.t the round function itself, so the gradient of input is just the same as the gradient of output. I will use a similarly caffe's `CUDA_KERNEL_LOOP` macro in pytorch's cuda file which iterate over each element position of the tensor.
 
 #### 1. Environment Preparation
 
@@ -19,11 +19,11 @@ First, please refer to the [official docs about how to create a C extension](htt
 sudo apt install python-dev # for python2 users or python3-dev for python3
 pip install cffi # may need sudo, or pip2 for explicitly installing for python2
 ```
-    
-   
+
+
 #### 2. Prepare your directories and files structrue
 
-Firstly, I made a new dir named `round_cuda`, which will contain all the code we need today and created some new files, the structure is below:
+Firstly, I made a new directory named `round_cuda`, which will contain all the code we need today and created some new files, the structure is below:
 
     ➜  round_cuda git:(master) ✗ tree .
     .
@@ -58,33 +58,34 @@ Firstly, I made a new dir named `round_cuda`, which will contain all the code we
 
     Notably, the return value's type is `int`, and return **1** rather than 0 when finished normally.
 
-    The functions declared will be implemented in the below file `src/round_cuda.c`.
+    The functions declared will be implemented in the following file `src/round_cuda.c`.
 
   * round_cuda_kernel.h
 
     The cuda wrapper function's declaration is in this file, the parameters is similar to `round_cuda.h`'s' C functions, but the data type is changed from `ThCudaTensor *` to the real data `float *`, and there is always a `stream` parameter which capsuled the  Cuda calculation position for pytorch to find it.
 
-    What's more, these declarations must be wrapped in a `extern C` structure because they are C++ functions which wrap the kernel functions waited to be called in C functions.
+    What's more, these declarations must be wrapped in an `extern C` structure because they are C++ functions which wrap the kernel functions waited to be called in C functions.
 
     These wrapper functions will be called in the `round_cuda.h` C functions.
 
-#### 4. Write the src code
+#### 4. Write the main code
 
   * round_cuda.c
 
-    The file implement the C functions.
-    First, you can use `extern THCState *state` to refer the pytorch state, which will be passed as a parameter in the below always.
+    The file implements the C functions.
 
-    Next, you need to use the API `THCudaTensor_data` to get the float point from a `THCudaTensor *`, and `THCState_getCurrentStream` to get the stream, then pass them to `round_cuda_kernel.h` declared cuda wrapper functions.
+    First, you can use `extern THCState *state` to refer the pytorch state, which will be passed as a parameter later always.
+
+    Next, you need to use the API `THCudaTensor_data` to get the float pointer from a `THCudaTensor *`, and `THCState_getCurrentStream` to get current Cuda stream, then pass them to the `round_cuda_kernel.h` declared cuda wrapper functions.
 
     Finally, don't forget to return 1 to be safe.
 
   * round_cuda_kernel.cu
 
-    Finally, we reach to the `cu` file, you need to include `caffe_cuda_macro.h` to use Caffe's macro and `round_cuda_kernel.h`.
+    Finally, we reach to the `.cu` file, but at the beginning, you need to include `caffe_cuda_macro.h` to use Caffe's macro and `round_cuda_kernel.h`.
 
-    Then, define your own `__global__` kernel's and wrap them in the `round_cuda_kernel.h` declared cuda wrapper functions, they should hold the float pointer of your tensors and other parameters like current pytorch cuda stream, YOU CAN USE CAFFE MACRO STYLE TO WRITE YOUR OWN KERNEL, just like below:
-    
+    Then, define your own `__global__` kernel's and wrap them in the `round_cuda_kernel.h` declared cuda wrapper functions, they should be passed the float pointer of your tensors and other parameters like the current pytorch cuda stream, **YOU CAN USE CAFFE MACRO STYLE TO WRITE YOUR OWN KERNEL**, for example:
+
     ```c++
     __global__ void round_forward_cuda_kernel(const int n, float *bottom_data, float *top_data) {
         CUDA_KERNEL_LOOP(i, n) {
@@ -92,9 +93,9 @@ Firstly, I made a new dir named `round_cuda`, which will contain all the code we
         }
     }
     ```
-    
+
     and call above kernel just like:
-    
+
     ```c++
     void round_forward_cuda(float *bottom_data, float *top_data, int count, cudaStream_t stream)
     {
@@ -105,16 +106,17 @@ Firstly, I made a new dir named `round_cuda`, which will contain all the code we
 
 
 #### 5. Write python building script using pytorch ffi interface and Makefile
-You can regard them as template scripts and always replace with  your filename at the corresponding positions, it isn't hard.
+You can regard them as template scripts and always replace `round` with your filename at the corresponding positions, it isn't hard.
 
-#### 6. Just type `make` in the root directory, then you will have a directory named `round`, the package directory name and structure is determined by the `create_extension`'s first parameter in file `build_ffi.py`.
+#### 6. Just type `make` in the root directory, then you will have a directory named `round`, the generated package directory's name and structure is determined by the function `create_extension`'s first parameter in file `build_ffi.py`.
 
 #### 7. You can write a test script to check your code, and encapsule it with Pytorch's `Function` and `Module` for later use.
 
 
-That's all, if you still get a bit confused, don't hesitate to open an issue for discussing.
+That's all, thanks for your attention. If you still get a bit confused, don't hesitate to open an issue for discussing with me.
 
 Enjoy your using of pytorch with Cuda accelerating!
+
 
 **References:**
 
