@@ -2,12 +2,12 @@
 
 **How to write cuda kernels or c functions in pytorch, especially for former caffe users.**
 
-## *. Motivation
+## Motivation
 [Pytorch](https://github.com/pytorch/pytorch) is a very easy-using, flexible and extensible deep learning research framework, which could be enriched with new operations(modules/functions) accelerated by c or cuda code using the power of GPUs.
 
 However, [the offical docs about how to create a C extension](http://pytorch.org/tutorials/advanced/c_extension.html) is so rough and not covering about cuda usage, and I wanted to transplant some new layers' `.cu` files of Caffe written in cuda kernel, but finding there was limited material describing it, so I created this repo in order to remind myself later or teach others on how to write custom cuda extensions in pytorch.
 
-## *. Basic Steps
+## Basic Steps
 
 For simplicity, I will create a new `Differential Round Function` below, which is a elment-wise operation on any dimensional tensor whose any element's range is (0,1) (just think as after a sigmoid activation), and the forward calcuation formula is just like the ordinal round function (f(x) = 1, when 1 \> x \>=0.5 else f(x) = 0, when 0 \< x \< 0.5), however, it is not differential causing the BP algorithm can't work normally, so in the backward phase its gradient will be replaced with the gradient of the corresponding approximating function f(x) = x, x∈(0,1), i.e. gradient is 1 w.r.t the round function itself, so the gradient of input is just the same as the gradient of output. I will use a similarly caffe's `CAFFE_KERNEL_LOOP` macro in pytorch's cuda file which iterate over each element position of the tensor.
 
@@ -105,8 +105,7 @@ Firstly, I made a new dir named `round_cuda`, which will contain all the code we
 
 
 #### 5. Write python building script using pytorch ffi interface and Makefile
-
-    You can regard them as template scripts and always replace with  your filename at the corresponding positions, it isn't hard.
+You can regard them as template scripts and always replace with  your filename at the corresponding positions, it isn't hard.
 
 #### 6. Just type `make` in the root directory, then you will have a directory named `round`, the package directory name and structure is determined by the `create_extension`'s first parameter in file `build_ffi.py`.
 
